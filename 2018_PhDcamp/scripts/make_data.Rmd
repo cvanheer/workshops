@@ -1,0 +1,173 @@
+---
+title: "make_data"
+output: pdf_notebook
+author: "christina van heer"
+---
+This file males
+
+```{r setup_file}
+
+rm(list=ls(all=TRUE)) # clear workspace 
+
+## ======================================
+# Directory information and filelist
+get_sys <- Sys.info()[["sysname"]] # figure out if Windows or OS and set wd
+if (get_sys == "Windows") {
+  main_dir <- "/Users/Chris/Bitbucket/2018_PhDcamp/scripts"
+}else if (get_sys == "Darwin"){ # OSX
+  main_dir <-   "/Users/Chris/Bitbucket/2018_PhDcamp/scripts"
+}else {
+  error("Windows or Mac directory not correct, OR you are running an alternative OS like Linux\n
+run_plots\n this script again")}
+
+# File.path combines names to make a path (i.e. how to get to) to a file
+# An example of a path to a file would be ~/Dropbox/GRIPS/PhD_camp/ggplot_workshop
+# data_dir <- file.path(main_dir,'subj_data')
+# 
+# if (dir.exists(data_dir)==FALSE){
+#    dir.create(data_dir)
+# }
+
+# Now we can tell R that this is the directory it can "see" / "look into"
+#setwd(data_dir) # tell R to look here for files 
+#file <- Sys.glob("*pilot_data.csv")[1] # look for a file that has the words "pilot_data.csv" in it 
+
+```
+
+
+
+```{r create_helper_functions}
+
+# Create helper function which creates correlated data 
+make_cor_data <- function(xData, r){
+  # Description: this function takes data and creates an appropriately 
+  # correlate set of data of the same length 
+  # Use the correlation to figure out R2
+  r2 = r^2
+  variance = 1 - r2 
+  # Standard deviation of the xData
+  SD = sqrt(variance)
+  # You need to create noise which is correlated
+  noise = rnorm(length(xData), mean=0, sd=SD)
+  # Create y data which is the same thing as the xData but with some level of noise added to it 
+  yData = r*xData + noise
+  return(yData)
+}
+```
+
+```{r make_data}
+
+make_data <- function(subject, seed_number){
+  
+  # Set the seed of the random number gen 
+  set.seed(seed_number)
+  
+  # Let's make a new subj_dataset with 240 trials 
+  subj_no = rep(sub,240)
+  age = sample(x=seq(18,40),10, replace=TRUE)
+  
+  if (sub %% 2){
+    # If the modulus of the subject number (when you divide it by 2) is 0
+    # they are in 'Sz' group otherwise they are in 'control' group 
+    group_assign = 1
+  }else{
+    group_assign = 2
+  }
+
+  group = rep(group_assign,240) # group assignment 
+  stim = sample(rep(c(1,2), 120), replace = FALSE)
+  trial = 1:240
+  difficulty = sample(rep(c(1,2,3), 80), replace = FALSE)
+  resp = rep(0,240)
+  corr = rep(0,240)
+  conf = rep(0,240)
+  RT_day1 = rep(0,240)
+  
+  # subj_data frame
+  subj_data <- data.frame(subj_no, age, group, stim, trial, difficulty, resp, corr, conf, RT_day1)
+  
+  # Generate subj_data 
+  # For noise trials of 1 (low noise):
+  subj_data[subj_data['difficulty']==1,'corr'] <- sample(0:1,80, replace=TRUE, prob = c(0.20, 0.80))
+  subj_data[subj_data['difficulty']==2,'corr'] <- sample(0:1,80, replace=TRUE, prob = c(0.40, 0.60))
+  subj_data[subj_data['difficulty']==3,'corr'] <- sample(0:1,80, replace=TRUE, prob = c(0.50, 0.50))
+  
+  # Responses are correct are when the stimulus and response are the same
+  # So make the response the same as the stimulus for these trials
+  subj_data[subj_data['corr']==1,'resp'] <- subj_data[subj_data['corr']==1,'stim'] # take the value of stim for correct
+  
+  incor_ind <- which(subj_data['corr']==0) # find which trials are incorrect
+  for (t in incor_ind){ # loop through all incorrect trials 
+    # now look at a single trial 
+    if (subj_data[t,'stim']== 1){ # if the stimulus is 1 on an incorrect trial 
+      subj_data[t, 'resp'] <- 2 # the response will be the opposite (because the subject got this trial wrong)
+    }else if(subj_data[t,'stim']==2){
+      subj_data[t, 'resp'] <- 1}
+  }
+      
+  # Get indicies of combinations of difficult and correctness 
+  d1c1 = which(subj_data['difficulty']==1 & subj_data['corr']==1)
+  d1c0 = which(subj_data['difficulty']==1 & subj_data['corr']==0)
+  d2c1 = which(subj_data['difficulty']==2 & subj_data['corr']==1)
+  d2c0 = which(subj_data['difficulty']==2 & subj_data['corr']==0)
+  d3c1 = which(subj_data['difficulty']==3 & subj_data['corr']==1)
+  d3c0 = which(subj_data['difficulty']==3 & subj_data['corr']==0)
+  
+  subj_data[d1c1, 'conf'] <- sample(c(4,5),length(d1c1), replace=TRUE)
+  subj_data[d1c0, 'conf'] <- sample(c(3,4),length(d1c0), replace=TRUE)
+  
+  subj_data[d2c1, 'conf'] <- sample(c(3,4),length(d2c1), replace=TRUE)
+  subj_data[d2c0, 'conf'] <- sample(c(2,3),length(d2c0), replace=TRUE)
+  
+  subj_data[d3c1, 'conf'] = sample(c(2,3),length(d3c1), replace=TRUE)
+  subj_data[d3c0, 'conf'] = sample(c(1,2),length(d3c0), replace=TRUE)
+  
+  # Reaction time 
+  subj_data[d1c1, 'RT_day1'] <- rnorm(length(d1c1),0.40,0.08) 
+  subj_data[d1c0, 'RT_day1'] <- rnorm(length(d1c0),0.55,0.10) 
+  subj_data[d2c1, 'RT_day1'] <- rnorm(length(d2c1),0.6,0.120) 
+  subj_data[d2c0, 'RT_day1'] <- rnorm(length(d2c0),0.7,0.150) 
+  subj_data[d3c1, 'RT_day1'] <- rnorm(length(d3c1),0.80,0.200) 
+  subj_data[d3c0, 'RT_day1'] <- rnorm(length(d3c0),1.0,0.350) 
+  
+  # Let's stimulate RT for this task on another day 
+  # We are going to produce new data that is correlated with the old data by using the
+  # special function we created earlier 
+  subj_data['RT_day2'] <- subj_data['RT_day1'] + make_cor_data(subj_data['RT_day1'], 0.58)
+  
+  return(subj_data)
+} # function end 
+
+## Create data -----------------------------------
+subject_list = seq(1,10)
+
+# These are random seeds I generated from '1111' to '9999' using random.org
+# This ensures we get the same randomisation each time 
+seeds = c(
+  4830,  4727,  2077,  6285,  1664,  3856,  8792,  5549,  2971,
+  9445,  8112,  2683,  7478,  4980,  4371,  5870,  5070,  9985,
+  7384,  7603,  8686,  8073,  9860,  1129,  2833,  8814,  7473,
+  5676,  1196,  2258,  9442,  2959,  1366,  7707,  2727,  4192,
+  9419,  8936 , 1336,  3299,  1624,  5920,  9714,  5965,  7559)
+
+# Create empty data frame 
+data <- data.frame()
+
+for (sub in subject_list){
+  
+  # Individual subject data 
+  subj_data <- make_data(sub, seeds[sub]) 
+  
+  # Make individual subject filename 
+  subj_filename <- paste("p0", sub, "_data.csv", sep="")
+  write.csv(data, file=file.path(main_dir,"data",subj_filename))
+
+  # Put all of the data together 
+  data <- rbind(subj_data,data)
+}
+
+# Save data 
+write.csv(data, file=file.path(main_dir,"data","raw_data.csv"))
+save(data, file=file.path(main_dir,"data","raw_data.R"))
+
+```

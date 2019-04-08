@@ -354,8 +354,7 @@ gapminder %>%
 gapminder %>% 
   group_by(continent, year) %>%
   summarize(meanlifeExp = mean(lifeExp)) 
-  # nest(.) # look at the effect of adding "nest" here by removing the '#' sign in front of it 
-  
+
 ```
 
 Here, we are calculating the mean gdp for each country 
@@ -368,7 +367,6 @@ gapminder %>%
   mutate(gdp = pop * gdpPercap) %>% # add a column which calculates a new variable called gdp 
   group_by(country) %>% # group by country so that each row is a country 
   summarize(mean_gdp = mean(gdp)) # get the mean per country of the gdp column you just created 
-  #ungroup() # ungroup by country 
 
 ```
 

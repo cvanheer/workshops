@@ -47,7 +47,7 @@ You need a copy of the following on your computer:
 
 - Open it up and click on the Console 
 
-```install.packages("tidyverse", "gapminder", "broom", "sjstats", "tibble", dependencies = TRUE)```
+```install.packages(c("tidyverse", "gapminder", "broom", "sjstats", "tibble"), dependencies = TRUE)```
 
 - Say "yes" to anything that seeems sensible which pops up in the R console
 

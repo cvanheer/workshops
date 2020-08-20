@@ -1,0 +1,303 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+
+## Retinalintensity = surfaceshade / lightintensity
+retinal.intensity <- 0.2
+
+## If retinal intensity remains constant go through all combinations
+## of light intensity which could have produced this retinal intensity
+light.intensity.space <- seq(0.01, 1, 0.01)
+
+## Surface intensity space 
+surface.intensity.space <- retinal.intensity / light.intensity.space
+
+## Plot the light intensity vs surface intensity Likelihood space 
+## This is the correct plot: checked the answers 
+plot(light.intensity.space, surface.intensity.space, type = "l",
+     xlab = "Light Intensity", ylab = "Surface Intensity",
+     xlim = c(0, 1), ylim = c(0,1))
+
+## Strong prior that the light intensity was between 0.2 and 0.4 and nothing else 
+## Draw this on a plot - should be a uniform distribution between 0.2 and 0.4
+
+```
+
+
+```{r}
+
+stimulus <- seq(from = -10, to = 10, by = 0.01)
+
+## Prior distribution - get the density of a gaussian (normal) distribution 
+prior <- dnorm(stimulus, mean = 0, sd = 2)
+prior <- prior /sum(prior)
+
+xt <- 3.2 # observation 
+
+## Likelihood is the uncertianty around the measurement, x(t)
+## Probability density at a particular value of xt (holding the observation constant)
+## and getting the probability for each stimulus value, under the hypothesis of mean, xt
+likelihood <- dnorm(stimulus, mean = xt, sd = 1)
+likelihood <- likelihood / sum(likelihood)
+
+## Posterior 
+posterior <- prior * likelihood
+posterior <- posterior / sum(posterior)
+MAP <- max(posterior)
+
+## Plot the prior distribution 
+plot(stimulus, prior, 
+     type = "l", 
+     ylab = "Probability", xlab = "Stimulus Values",
+     main =  "Prior Distribution")
+
+## Plot the likelihood function 
+plot(stimulus, likelihood, 
+     type = "l", 
+     ylab = "Probability", xlab = "Stimulus Values",
+     main =  "Likelihood Function")
+abline(v =  xt, col = "red")
+
+## Plot the posterior distribution 
+plot(stimulus, posterior,
+     type = "l", 
+     ylab = "Probability", xlab = "Stimulus Values",
+     main =  "Posterior Distribution")
+abline(v =  MAP, col = "red")
+
+## Plot them all on the same graph - notice how the likelihood is pulled
+## by the prior, and that's where the posterior ends up 
+plot(stimulus, prior, 
+     type = "l", 
+     ylab = "Probability", xlab = "Stimulus Values",
+     col = "red",
+     main =  "", ylim = c(0, 0.0065))
+lines(stimulus, likelihood, col = "blue")
+lines(stimulus, posterior, col = "black")
+legend("topright", legend = c("Prior", "Likelihood", "Posterior"),
+       col = c("red", "blue", "black"), lty = 1:3, cex = 0.8,
+       box.col = NA)
+
+  
+```
+
+Change point tutorial - this is hard!! 
+```{r}
+
+## Setup experiment parameters 
+s <- c(-1, -1, -1, -1, -1, 1, 1, 1, 1, 1) # change point occurs at 5-6 boundary 
+
+sigma <- 1 ## change later 
+
+## These are the noisy observations 
+#xt <- rnorm(10, mean = s, sd = 1)
+xt <- c(-0.46, 0.83, -3.26, -0.14, -0.68, -2.31, 0.57, 1.34, 4.58, 3.77) ## used in the paper 
+
+# The trials that we are iterating over 
+t.change <- seq(1, 10)
+
+## Plot values of the stimulus along with each iteration of change points 
+plot(t.change, xt, type = "l", xlab = "Time", ylab = "measurement")
+abline(a = 0, b = 0, col = "red")
+
+## Posterior probability calculation 
+posterior.ch <- rep(NA, length(xt))
+
+## Posterior calculation we are iterating over possible change point hypotheses 
+## so we are evaluating whether a change point occured at 1:T. 
+for (t in 1:length(s)){
+  posterior.ch[t] <- exp( 2  *  sum( xt[t:length(s)] ) ) 
+}
+
+## Normalise posterior so that it is between 0 and 1 by dividing by the sum 
+posterior.ch <- posterior.ch/sum(posterior.ch)
+
+## Stimulius category 
+plot(1:length(xt), s,
+     xlab = "Trial Number", ylab = "Stimulus Category (s) (1 = A, -1 = B)",
+     type = "l")
+
+## Noisy representation of stimulus category 
+plot(1:length(xt), xt,
+      xlab = "Trial Number", ylab = "Noisy measurement of stimulus x(t)",
+     type = "l")
+
+## Plot posterior probability of a change point at each theoretical value of tchange 
+plot(1:length(xt), posterior.ch, 
+     xlab = "Possiblity that a change point occured on trial t", ylab = "Posterior",
+     type = "l")
+
+```
+
+
+Assume s = 1 and T = 10. Vary the true change point tchange from 1 to T. For each value of tchange, we simulate 10,000 trials (or more if possible). On each simulated trial,
+Based on tchange; specify the stimulus sequence s.
+Simulate a measurement sequence x from s.
+Apply the decision rule to each measurement sequence. The output is the simulated observer’s response, namely an estimate of tchange.
+Determine whether the response was correct.
+
+## Todo --- 
+## Implement decision rule - maximum of posterior 
+## Determine response (correct vs incorrect) - compare whether the change point was on that trial 
+## Get proportion correct for each true value of "tchange"
+## Vary sigma (1,23) and T from 2 - 16 in steps of 2 - plot overall prop correct as a function of T 
+```{r}
+
+sim.data <- function(tchange, sigma, time.scale){
+  ## ---------------------------------------------------------------------------------------
+  ## Description: this function simulates a dataset for a specific value of the following inputs:
+  ## Inputs: 
+  ## - tchange = the trial on which a change point occurs (numerical integer)
+  ## - sigma = the noise you assume in the measurement (SD) (numerical)
+  ## - time.scale = the number of trials. If this number is 10, then trials go from 1:10. (numerical)
+  ## Ouput: 
+  ## - data = simulated dataset in the form of a data frame which contains the inputs as columns and 
+  ## the posterior probability of a change point, given the simulated data 
+  ## ---------------------------------------------------------------------------------------
+  
+  data <- data.frame(
+    time = seq(1, time.scale),
+    change.point = rep(tchange, time.scale),
+    stim = c(rep(-1, length(1:tchange)), rep(1, length((tchange+1) : time.scale)))
+  )
+  
+  ## Generate noisy observations 
+  data$obs <- rnorm(time.scale, mean = data$stim, sd = sigma)
+  
+  ## Generate posterior probability 
+  data$post.prob <- NA
+  
+  ## Posterior probability updating - each iteration of this loop is saying: "what is the posterior probabiliy
+  ## that a change point occured on trial t, if I look at the observations from t = the value in the loop to 
+  ## the last trial I saw 
+  for (t in 1:time.scale){
+    data$post.prob[t] <- exp(2 * sum(data$obs[t:time.scale]) )
+  }
+  
+  ## Perform normalisation by dividing by the sum 
+  data$post.prob <- data$post.prob / sum(data$post.prob)
+  
+  ## Convert to tibble for fun. 
+  data <- as_tibble(data)
+
+  return(data)
+}
+
+
+## todo(CVH): insert parameters here 
+
+## Created nested datasets to feed into the simulation 
+sim <- as_tibble(expand.grid(
+  tchange = 1:9, ## the trial on which there is a change point 
+  sigma = 1:3 ## noise parameter
+))
+
+## Run function 
+sim <- sim %>% 
+  mutate(
+    data = map(tchange, sim.data, sigma, 10)
+  ) 
+sim$simNo <- as.factor(1:dim(sim)[1])
+
+## At the moment we have data nested in a line of a tibble (for matlab users, this is like a cell array)
+## We want to get rid of this nesting structure, so we will perform an unnesting of it 
+## If you want to have a look at before vs after, just type "sim" in the console before you run this line, and after 
+sim <- sim %>%
+  unnest(data) 
+
+## Note: posterior probability will be same for trials in each simNo because it's the max 
+## of ALL of the post.prob values for a single simulation - yeah, it's redundant, but who cares, it means 
+## it fits in the same data frame so whatever! 
+
+## MAP stands for maximum-a-posteriori and is just the highest value of the posterior; that is, the value of 
+## tchange with the highest probability. We would expect that given we simulated the data with change points on 
+## particular trials, the MAP for each dataset would occur around the value of tchange that we simulated the change 
+## point to be from. I.e. if a change point occured at trial 5, the posterior should peak (be at a maximum) around trial 5.
+sim <- sim %>% 
+  group_by(simNo) %>%
+  mutate(
+    MAP = max(post.prob), ## maximum value of posterior (MAP estimate)
+    pred.change.point = which(post.prob == MAP)-1, ## figure out which trial the MAP occured on (infer where the model thinks a change point occured)
+  )
+
+## TODO(CVH): you were up to here 
+## If the model and the actual change point where we simulated match, the values of change.point and pred.change.point should match
+sim$correct <- sim$change.point == sim$pred.change.point
+
+## Calculate proportion correct 
+sim %>% 
+  group_by(change.point, sigma) %>% 
+  mutate(
+    prop.correct = length(sim$correct)
+  )
+
+sim$simNo 
+```
+
+```{r}
+
+## ------- Plot the posterior probability over change points -------------
+## Below, each facet of the plot is the trial we simulated a change point over 
+## If you would prefer a smoothed line, you can comment the geom_line() line and 
+## uncomment the geom_smooth() line. I have used some colourblind palettes below, 
+## but keep in mind R libraries for colourblind palettes are also available (google)
+
+# http://www.cookbook-r.com/Graphs/Colors_(ggplot2)/ (this is where I got these palettes from)
+## Palette with grey 
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+# The palette with black:
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+  
+## Plot simulations for each noise level 
+sim %>% 
+  ggplot(., aes(x = time, y = post.prob, group = as.factor(simNo))) + 
+  geom_line(aes(x = time, y = post.prob, group = simNo, colour = as.factor(sigma))) + 
+  #geom_smooth(aes(y = post.prob, group = simNo, colour = as.factor(sigma)), se = FALSE, size = 0.5) +
+  facet_wrap(~change.point) +  ## we want a separate panel for change point we generated data from 
+  ## Legend settings: if you want to read more about legends: https://ggplot2-book.org/guides.html (Danielle Navarro wrote this)
+  scale_colour_manual(
+    name = "Noise",
+    values = cbbPalette[2:4], 
+  ) + 
+  xlab("Trial Number") + ylab("Posterior Probability \n of a Change Point") 
+  
+
+## Plot the stimulus distribution we simulated from - you will see exactly when the change point occured here
+sim %>% 
+  ggplot(., aes(x = time, y = stim, group = as.factor(simNo))) + 
+  geom_line(aes(x = time, y = stim, group = simNo, colour = as.factor(sigma))) + 
+  #geom_smooth(aes(y = post.prob, group = simNo, colour = as.factor(sigma)), se = FALSE, size = 0.5) +
+  facet_wrap(~change.point) +  ## we want a separate panel for change point we generated data from 
+  ## Legend settings: if you want to read more about legends: https://ggplot2-book.org/guides.html (Danielle Navarro wrote this)
+  scale_colour_manual(
+    name = "Noise",
+    values = cbbPalette[2:4], 
+  ) + 
+  xlab("Trial Number") + ylab("Stimulus (+ = Category A, - = Stimulus B)") 
+  
+## It might also be cool to plot the observed sequence, you can then eyeball it to sanity check
+## You should hopefully observe that when the distribution changes, so does the posterior estimate of 
+## the change point trial - however, given we are drawing from a normal distribution, this is not trivial! 
+## If you look at the plot you can see it's tricky to know when a change point occured. 
+sim %>% 
+  ggplot(., aes(x = time, y = obs, group = as.factor(simNo))) + 
+  geom_line(aes(x = time, y = obs, group = simNo, colour = as.factor(sigma))) + 
+  #geom_smooth(aes(y = post.prob, group = simNo, colour = as.factor(sigma)), se = FALSE, size = 0.5) +
+  facet_wrap(~change.point) +  ## we want a separate panel for change point we generated data from 
+  ## Legend settings: if you want to read more about legends: https://ggplot2-book.org/guides.html (Danielle Navarro wrote this)
+  scale_colour_manual(
+    name = "Noise",
+    values = cbbPalette[2:4], 
+  ) + 
+  xlab("Trial Number") + ylab("Observations (+ = Category A, - = Stimulus B)") 
+         
+```
+

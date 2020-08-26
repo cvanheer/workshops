@@ -192,54 +192,93 @@ sim.data <- function(tchange, sigma, time.scale){
 }
 
 
-## todo(CVH): insert parameters here 
+run.sim <- function(noise.conditions, change.points, time.scale){
+  
+  ## Create a matrix containing the conditions you want to simulate data over 
+  simulation <- as_tibble(expand.grid(
+    tchange = change.points, ## the trial on which there is a change point 
+    sigma = noise.conditions ## noise parameter
+  ))
+  
+  ## Run the simulation for each row of these parameters in simulation
+  ## Add a new column called "data" which contains the simulated data nested in a row 
+  simulation <- simulation %>% 
+    mutate(
+      data = map(tchange, sim.data, sigma, time.scale)
+    ) 
+ 
+  simulation <-simulation %>% 
+    unnest(data) 
+  
+  return(simulation)
+}
 
-## Created nested datasets to feed into the simulation 
-sim <- as_tibble(expand.grid(
-  tchange = 1:9, ## the trial on which there is a change point 
-  sigma = 1:3 ## noise parameter
-))
 
-## Run function 
-sim <- sim %>% 
+## Create parameter matrix to run simulations over 
+# simtest <- tibble(expand.grid(true.change.point = change.points, ## the trial on which there is a change point 
+#                               sigma = noise.conditions)) ## noise parameter
+
+simtest <- purrr::map_dfr(1, function(x){
+  simtest <- tibble(expand.grid(true.change.point = change.points, ## the trial on which there is a change point 
+                                sigma = noise.conditions)) ## noise parameter
+  return(simtest)
+})
+simtest$simNo <- 1:dim(simtest)[1]
+
+## Run simulations 
+simtest <- simtest %>% 
+  rowwise() %>% ## use rows as input into function 
   mutate(
-    data = map(tchange, sim.data, sigma, 10)
-  ) 
-sim$simNo <- as.factor(1:dim(sim)[1])
-
-## At the moment we have data nested in a line of a tibble (for matlab users, this is like a cell array)
-## We want to get rid of this nesting structure, so we will perform an unnesting of it 
-## If you want to have a look at before vs after, just type "sim" in the console before you run this line, and after 
-sim <- sim %>%
-  unnest(data) 
-
-## Note: posterior probability will be same for trials in each simNo because it's the max 
-## of ALL of the post.prob values for a single simulation - yeah, it's redundant, but who cares, it means 
-## it fits in the same data frame so whatever! 
+    data = map(true.change.point, sim.data, sigma, 10)
+  ) %>% 
+  ## At the moment we have data nested in a line of a tibble (for matlab users, this is like a cell array)
+  ## We want to get rid of this nesting structure, so we will perform an unnesting of it 
+  ## If you want to have a look at before vs after, just type "sim" in the console before you run this line, and after 
+  unnest(data)
 
 ## MAP stands for maximum-a-posteriori and is just the highest value of the posterior; that is, the value of 
 ## tchange with the highest probability. We would expect that given we simulated the data with change points on 
 ## particular trials, the MAP for each dataset would occur around the value of tchange that we simulated the change 
 ## point to be from. I.e. if a change point occured at trial 5, the posterior should peak (be at a maximum) around trial 5.
-sim <- sim %>% 
+sim.summary <- simtest %>% 
   group_by(simNo) %>%
-  mutate(
+  summarise(
+    sigma = unique(sigma),
+    true.change.point = unique(true.change.point),
     MAP = max(post.prob), ## maximum value of posterior (MAP estimate)
-    pred.change.point = which(post.prob == MAP)-1, ## figure out which trial the MAP occured on (infer where the model thinks a change point occured)
+    pred.change.point = which(post.prob == MAP)-1
+  ) 
+
+sim.summary$correct <- NA
+for (ii in 1:dim(sim.summary)[1]){
+  if (sim.summary$pred.change.point[ii] - sim.summary$true.change.point[ii] == 0){
+    sim.summary$correct[[ii]] <- 1
+  }else{
+    sim.summary$correct[[ii]] <- 0
+  }
+}
+
+## Calculate prop correct
+sim.prop.correct <- sim.summary %>% 
+  group_by(sigma, true.change.point) %>% 
+  summarise(
+    mean.MAP = mean(MAP),
+    prop.correct = sum(correct)/n()
   )
 
-## TODO(CVH): you were up to here 
-## If the model and the actual change point where we simulated match, the values of change.point and pred.change.point should match
-sim$correct <- sim$change.point == sim$pred.change.point
 
-## Calculate proportion correct 
-sim %>% 
-  group_by(change.point, sigma) %>% 
-  mutate(
-    prop.correct = length(sim$correct)
-  )
+## Plot proportion correct
+sim.prop.correct %>% 
+  ggplot(., aes(x = true.change.point, y = prop.correct, group = sigma)) + 
+  geom_line(aes(colour = as.factor(sigma))) + 
+  xlab("True Change Point Occurred") + ylab("Proportion Correct") + 
+  scale_colour_manual(
+    name = "Noise Level",
+    values = cbbPalette[2:4], 
+  ) + xlim(1, 10) + ylim(0, 1) + 
+  scale_x_continuous(breaks = seq(1,10,1))
 
-sim$simNo 
+
 ```
 
 ```{r}
@@ -257,7 +296,7 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
   
 ## Plot simulations for each noise level 
-sim %>% 
+simtest %>% 
   ggplot(., aes(x = time, y = post.prob, group = as.factor(simNo))) + 
   geom_line(aes(x = time, y = post.prob, group = simNo, colour = as.factor(sigma))) + 
   #geom_smooth(aes(y = post.prob, group = simNo, colour = as.factor(sigma)), se = FALSE, size = 0.5) +
@@ -267,11 +306,12 @@ sim %>%
     name = "Noise",
     values = cbbPalette[2:4], 
   ) + 
-  xlab("Trial Number") + ylab("Posterior Probability \n of a Change Point") 
-  
+  xlab("Trial Number") + ylab("Posterior Probability \n of a Change Point") + 
+  scale_x_continuous(breaks = seq(1,10,1))
+
 
 ## Plot the stimulus distribution we simulated from - you will see exactly when the change point occured here
-sim %>% 
+simtest %>% 
   ggplot(., aes(x = time, y = stim, group = as.factor(simNo))) + 
   geom_line(aes(x = time, y = stim, group = simNo, colour = as.factor(sigma))) + 
   #geom_smooth(aes(y = post.prob, group = simNo, colour = as.factor(sigma)), se = FALSE, size = 0.5) +
@@ -287,7 +327,7 @@ sim %>%
 ## You should hopefully observe that when the distribution changes, so does the posterior estimate of 
 ## the change point trial - however, given we are drawing from a normal distribution, this is not trivial! 
 ## If you look at the plot you can see it's tricky to know when a change point occured. 
-sim %>% 
+simtest %>% 
   ggplot(., aes(x = time, y = obs, group = as.factor(simNo))) + 
   geom_line(aes(x = time, y = obs, group = simNo, colour = as.factor(sigma))) + 
   #geom_smooth(aes(y = post.prob, group = simNo, colour = as.factor(sigma)), se = FALSE, size = 0.5) +
